@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "GamePlayer": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}
