@@ -1,6 +1,7 @@
 ﻿namespace GamePlayer;
 
 using System;
+using OpenTK.Mathematics;
 
 public class GameStateReducer
 {
@@ -20,9 +21,19 @@ public class GameStateReducer
         const float gravity = .1f / 4f;
         const float jumpForce = .45f;
 
-        var newVelocity = currentState.CharacterDetails.Velocity with
+        if (!currentState.IsAlive)
         {
-            X = MathF.Min(MathF.Max(inputState.LeftRightStatus switch
+            return currentState with
+            {
+                CharacterDetails = currentState.CharacterDetails with
+                {
+                    Velocity = Vector2.Zero,
+                }
+            };
+        }
+
+        var newVelocity = new Vector2(
+            MathF.Min(MathF.Max(inputState.LeftRightStatus switch
             {
                 LeftRightStatus.Right when currentState.CharacterDetails.Velocity.X < 0.0f =>
                     currentState.CharacterDetails.Velocity.X + oppositeDirectionDeceleration,
@@ -38,17 +49,13 @@ public class GameStateReducer
                     MathF.Min(currentState.CharacterDetails.Velocity.X + naturalDeceleration, 0.0f),
                 _ => 0.0f
             }, -maxSpeed), maxSpeed),
-            Y = 
             inputState.JumpPressed && currentState.CharacterDetails.IsGrounded
                 ? -jumpForce
-                : currentState.CharacterDetails.Velocity.Y + gravity,
-        };
+                : currentState.CharacterDetails.Velocity.Y + gravity);
 
-        var newPosition = currentState.CharacterDetails.Position with
-        {
-            X = currentState.CharacterDetails.Position.X + newVelocity.X,
-            Y = currentState.CharacterDetails.Position.Y + newVelocity.Y,
-        };
+        var newPosition = new Vector2(
+            currentState.CharacterDetails.Position.X + newVelocity.X,
+            currentState.CharacterDetails.Position.Y + newVelocity.Y);
 
         bool DetectGround(float x) =>
             _levelData[(int)MathF.Floor(x), (int)MathF.Ceiling(newPosition.Y)] != '0';
@@ -67,21 +74,23 @@ public class GameStateReducer
 
         if (isInBlock)
         {
-            newPosition = newPosition with
-            {
-                X = newVelocity.X > 0 ? MathF.Floor(newPosition.X) : MathF.Ceiling(newPosition.X)
-            };
-            newVelocity = newVelocity with { X = 0f };
+            newPosition = new Vector2(
+                newVelocity.X > 0 ? MathF.Floor(newPosition.X) : MathF.Ceiling(newPosition.X),
+                newPosition.Y);
+
+            newVelocity = new Vector2(0f, newVelocity.Y);
         }
 
-        newPosition = newPosition with
-        {
-            X = MathF.Max(currentState.HorizontalScroll / 16f, newPosition.X),
-        };
+        newPosition = new Vector2(
+            MathF.Max(currentState.HorizontalScroll / 16f, newPosition.X),
+            newPosition.Y);
+
+        var isAlive = currentState.IsAlive && newPosition.Y <= 15;
 
         return currentState with
         {
             CharacterDetails = new(newPosition, newVelocity, isGrounded),
+            IsAlive = isAlive,
         };
     }
 }

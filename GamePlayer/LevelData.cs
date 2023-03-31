@@ -17,6 +17,12 @@ public class LevelData
         _data = data;
     }
 
-    public static LevelData Load(string filePath) =>
-        new (File.ReadAllLines(filePath).Select(x => x.ToArray()).ToArray());
+    public static LevelData[] Load(string filePath) =>
+        File.ReadAllLines(filePath)
+            .Where(x => x.Length > 0)
+            .Select((x, i) => (Group: i / 16, Line: x.ToArray()))
+            .GroupBy(x => x.Group)
+            .Select(g => g.Select(x => x.Line).ToArray())
+            .Select(x => new LevelData(x))
+            .ToArray();
 }

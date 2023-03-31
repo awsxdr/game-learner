@@ -6,10 +6,30 @@ namespace GamePlayer;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using Google.Protobuf.WellKnownTypes;
+using OpenTK.Graphics.ES11;
 using OpenTK.Mathematics;
 using OpenTK.Windowing.GraphicsLibraryFramework;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using StbImageSharp;
+using BeginMode = OpenTK.Graphics.OpenGL4.BeginMode;
+using ClearBufferMask = OpenTK.Graphics.OpenGL4.ClearBufferMask;
+using DrawElementsType = OpenTK.Graphics.OpenGL4.DrawElementsType;
+using GL = OpenTK.Graphics.OpenGL4.GL;
+using Image = SixLabors.ImageSharp.Image;
+using PixelFormat = OpenTK.Graphics.OpenGL4.PixelFormat;
+using PixelType = OpenTK.Graphics.OpenGL4.PixelType;
+using TextureMagFilter = OpenTK.Graphics.OpenGL4.TextureMagFilter;
+using TextureMinFilter = OpenTK.Graphics.OpenGL4.TextureMinFilter;
+using TextureParameterName = OpenTK.Graphics.OpenGL4.TextureParameterName;
+using TextureTarget = OpenTK.Graphics.OpenGL4.TextureTarget;
+using TextureWrapMode = OpenTK.Graphics.OpenGL4.TextureWrapMode;
+using VertexAttribPointerType = OpenTK.Graphics.OpenGL4.VertexAttribPointerType;
 
 public class GameView : GameWindow
 {
@@ -28,8 +48,10 @@ public class GameView : GameWindow
     private PlayerSprite _playerSprite;
     private GameStateReducer _gameStateReducer;
     private int _frame;
+    private int _frameCount;
+    private int _recordingFinishedFrame = int.MaxValue - 1000;
 
-    private GameState _gameState = new (new (new Vector2(5.0f, 10.0f), new Vector2(0.0f, 0.0f), false), 16f);
+    private GameState _gameState = new (new (new Vector2(5.0f, 10.0f), new Vector2(0.0f, 0.0f), false), 16f, true);
 
     private readonly float[] _squareVertexes = 
     {
@@ -58,6 +80,18 @@ public class GameView : GameWindow
     {
         _levelData = levelData;
         _recording = recording.GetEnumerator();
+
+        if (!Directory.Exists("outputimg"))
+            Directory.CreateDirectory("outputimg");
+
+        foreach (var path in Directory.GetFiles("outputimg", "*.png"))
+        {
+            File.Delete(path);
+        }
+
+        File.WriteAllText(@"outputimg\input.txt", "");
+
+        _frameCount = 0;
     }
 
     protected override void OnRenderFrame(FrameEventArgs args)
@@ -122,9 +156,22 @@ public class GameView : GameWindow
 
         GL.DrawElements(BeginMode.Triangles, _squareVertexIndexes.Length, DrawElementsType.UnsignedInt, 0);
 
-        Title = $"{_gameState.HorizontalScroll}, {_gameState.CharacterDetails.Position.X}";
+        //var stride = Size.X * 3;
+        //stride += (4 - stride % 4) % 4;
+        //var pixels = new byte[stride * Size.Y];
+        //GL.ReadPixels(0, 0, Size.X, Size.Y, PixelFormat.Rgb, PixelType.UnsignedByte, pixels);
+        //using var image = Image.LoadPixelData<Rgb24>(Configuration.Default, pixels, Size.X, Size.Y);
+        //image.Mutate(x => x.Flip(FlipMode.Vertical));
+        //var imageFileName = $"{_frameCount++}.png";
+        //image.Save($"outputimg/{imageFileName}");
+        //File.AppendAllText(@"outputimg\input.txt", $"file '{imageFileName}'\nduration {args.Time}\n");
+        
+        //Title = $"{_frameCount}";
 
         Context.SwapBuffers();
+
+        //if (_frameCount > _recordingFinishedFrame + 90)
+        //    Close();
     }
 
     protected override void OnResize(ResizeEventArgs e)
@@ -145,6 +192,8 @@ public class GameView : GameWindow
         }
         else
         {
+            _recordingFinishedFrame = Math.Min(_recordingFinishedFrame, _frameCount);
+
             _gameState = _gameStateReducer.Reduce(_gameState, new InputState(
                 KeyboardState.IsKeyDown(Keys.D) ? LeftRightStatus.Right
                 : KeyboardState.IsKeyDown(Keys.A) ? LeftRightStatus.Left
@@ -217,4 +266,5 @@ public record CharacterDetails(Vector2 Position, Vector2 Velocity, bool IsGround
 
 public record GameState(
     CharacterDetails CharacterDetails,
-    float HorizontalScroll);
+    float HorizontalScroll,
+    bool IsAlive);

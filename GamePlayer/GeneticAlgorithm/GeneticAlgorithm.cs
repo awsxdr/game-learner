@@ -23,23 +23,29 @@ public class GenerationCompletedEventArgs : EventArgs
 public class GeneticAlgorithm
 {
     private readonly GameStateReducer _reducer;
-    private const int PopulationSize = 1000;
+    private const int PopulationSize = 2500;
+    private const int Diversity = 10;
+    private const int MinimumCrossovers = 1;
+    private const int MaximumCrossovers = 100;
+    private const int StartGeneCount = 10;
+    private const int GeneGrowth = 10;
+    private const int GeneGrowthInterval = 25;
+    private const int ForcedGeneGrowthInterval = 200;
+    private const double GrowthImprovementRequirement = 2.0;
+
+    private int _mutationRate = 10000;
+    private double _lastGrowthScore = -100;
 
     private static readonly Random Random = new();
 
     private static readonly GameState InitialState =
-        new(new(new Vector2(5.0f, 10.0f), new Vector2(0.0f, 0.0f), false), 16f);
+        new(new(new Vector2(5.0f, 10.0f), new Vector2(0.0f, 0.0f), false), 16f, true);
 
     public event EventHandler<GenerationCompletedEventArgs>? GenerationCompleted;
 
     public GeneticAlgorithm(GameStateReducer reducer)
     {
         _reducer = reducer;
-
-        var ones = Enumerable.Repeat(1, 100);
-        var zeroes = Enumerable.Repeat(0, 100);
-        
-        var test = BreedSequence(ones, zeroes).ToArray();
     }
 
     public void Run()
@@ -49,30 +55,63 @@ public class GeneticAlgorithm
         var population = GetRandomPopulation();
 
         var generation = 0;
+        var lastBest = 0f;
 
         do
         {
-            var scoredPopulation = ScorePopulation(population).OrderByDescending(x => x.Score).ToArray();
+            var scoredPopulation = ScorePopulation(population).ToArray();
+            scoredPopulation = scoredPopulation.OrderByDescending(x => x.Score).ToArray();
 
             generationCompletedEventArgs = new GenerationCompletedEventArgs(scoredPopulation[0].Score, ++generation, scoredPopulation[0].Inputs.ToArray());
 
-            population = scoredPopulation.Take(5).GetCombinations()
-                .SelectMany(x => Enumerable.Range(0, 100)
+            var combinations = scoredPopulation.Take(Diversity).GetCombinations().ToArray();
+
+            population = combinations
+                .AsParallel()
+                .SelectMany(x => Enumerable.Range(0, PopulationSize / combinations.Length)
+                    .AsParallel()
                     .Select(_ => BreedSequence(x.First.Inputs, x.Second.Inputs))
                     .ToArray())
                 .ToArray();
 
             GenerationCompleted?.Invoke(this, generationCompletedEventArgs);
 
+            if (lastBest >= generationCompletedEventArgs.MaxScore)
+            {
+                _mutationRate = Math.Max(10, _mutationRate / 2);
+            }
+            else
+            {
+                _mutationRate = Math.Min(10000, _mutationRate * 2);
+            }
+
+            if (
+                generation % ForcedGeneGrowthInterval == 0
+                || (generation % GeneGrowthInterval == 0 && generationCompletedEventArgs.MaxScore - _lastGrowthScore > GrowthImprovementRequirement))
+            {
+                population = population.Select(genes => genes.Concat(GetRandomGenes(GeneGrowth)).ToArray()).ToArray();
+                _lastGrowthScore = generationCompletedEventArgs.MaxScore;
+            }
+
+            lastBest = generationCompletedEventArgs.MaxScore;
+
         } while (generationCompletedEventArgs.ShouldContinue);
     }
 
-    private static IEnumerable<T> BreedSequence<T>(IEnumerable<T> parent1, IEnumerable<T> parent2)
+    private static IEnumerable<InputState> BreedSequence(IEnumerable<InputState> parent1, IEnumerable<InputState> parent2)
     {
-        parent1 = parent1.ToArray();
-        parent2 = parent2.ToArray();
+        if (Random.Next(0, 2) == 0)
+        {
+            parent1 = parent1.ToArray();
+            parent2 = parent2.ToArray();
+        }
+        else
+        {
+            parent1 = parent2.ToArray();
+            parent2 = parent1.ToArray();
+        }
 
-        var crossovers = Enumerable.Range(0, Random.Next(3, 7))
+        var crossovers = Enumerable.Range(0, Random.Next(MinimumCrossovers, MaximumCrossovers))
             .Select(_ => Random.Next(0, Math.Min(parent1.Count(), parent2.Count())))
             .OrderBy(x => x)
             .Distinct()
@@ -83,12 +122,16 @@ public class GeneticAlgorithm
                 crossovers.Count(c => c < i) % 2 == 0
                     ? p.First
                     : p.Second)
+            .Select(i => Random.Next(0, 10000) == 0 ? GetRandomInputState() : i)
             .ToArray();
     }
 
     private static IEnumerable<IEnumerable<InputState>> GetRandomPopulation() =>
         Enumerable.Range(0, PopulationSize)
-            .Select(_ => Enumerable.Range(0, Random.Next(900, 1100)).Select(_ => GetRandomInputState()));
+            .Select(_ => GetRandomGenes(StartGeneCount));
+
+    private static IEnumerable<InputState> GetRandomGenes(int length) =>
+        Enumerable.Range(0, length).Select(_ => GetRandomInputState());
 
     private static InputState GetRandomInputState() =>
         new(
@@ -99,10 +142,28 @@ public class GeneticAlgorithm
         IEnumerable<IEnumerable<InputState>> population)
         =>
             population
-                .Select(ScoreInput);
+                .AsParallel()
+                .WithDegreeOfParallelism(8)
+                .Select(ScoreInput)
+                .ToArray();
 
-    private (float Score, IEnumerable<InputState> Inputs) ScoreInput(IEnumerable<InputState> inputs) =>
-        (ScoreState(inputs.Aggregate(InitialState, _reducer.Reduce)), inputs);
+    private (float Score, IEnumerable<InputState> Inputs) ScoreInput(IEnumerable<InputState> inputs)
+    {
+        inputs = inputs.ToArray();
+        return (ScoreState(inputs.Aggregate((State: InitialState, EndReachGeneration: 0, Generation: 0), (state, input) =>
+        {
+            var resultState = _reducer.Reduce(state.State, input);
 
-    private static float ScoreState(GameState state) => state.CharacterDetails.Position.X;
+            return (
+                resultState, 
+                state.EndReachGeneration > 0 ? state.EndReachGeneration 
+                : resultState.CharacterDetails.Position.X >= 200 ? state.Generation
+                : 0,
+                state.Generation + 1);
+        })), inputs);
+    }
+
+    private static float ScoreState((GameState State, int EndReachGeneration, int _) values) => 
+        (Math.Min(200, values.State.CharacterDetails.Position.X) + (values.EndReachGeneration > 0 ? (100f / values.EndReachGeneration) : 0))
+        / (values.State.IsAlive ? 1.0f : 2.0f);
 }
