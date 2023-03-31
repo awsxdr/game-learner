@@ -29,8 +29,8 @@ public class GeneticAlgorithm
     private const int MaximumCrossovers = 100;
     private const int StartGeneCount = 10;
     private const int GeneGrowth = 10;
-    private const int GeneGrowthInterval = 25;
-    private const int ForcedGeneGrowthInterval = 200;
+    private const int GeneGrowthInterval = 5;
+    private const int ForcedGeneGrowthInterval = 50;
     private const double GrowthImprovementRequirement = 2.0;
 
     private int _mutationRate = 10000;

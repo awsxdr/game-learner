@@ -6,36 +6,22 @@ namespace GamePlayer;
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using Google.Protobuf.WellKnownTypes;
-using OpenTK.Graphics.ES11;
 using OpenTK.Mathematics;
 using OpenTK.Windowing.GraphicsLibraryFramework;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using StbImageSharp;
-using BeginMode = OpenTK.Graphics.OpenGL4.BeginMode;
-using ClearBufferMask = OpenTK.Graphics.OpenGL4.ClearBufferMask;
-using DrawElementsType = OpenTK.Graphics.OpenGL4.DrawElementsType;
-using GL = OpenTK.Graphics.OpenGL4.GL;
+
 using Image = SixLabors.ImageSharp.Image;
-using PixelFormat = OpenTK.Graphics.OpenGL4.PixelFormat;
-using PixelType = OpenTK.Graphics.OpenGL4.PixelType;
-using TextureMagFilter = OpenTK.Graphics.OpenGL4.TextureMagFilter;
-using TextureMinFilter = OpenTK.Graphics.OpenGL4.TextureMinFilter;
-using TextureParameterName = OpenTK.Graphics.OpenGL4.TextureParameterName;
-using TextureTarget = OpenTK.Graphics.OpenGL4.TextureTarget;
-using TextureWrapMode = OpenTK.Graphics.OpenGL4.TextureWrapMode;
-using VertexAttribPointerType = OpenTK.Graphics.OpenGL4.VertexAttribPointerType;
 
 public class GameView : GameWindow
 {
     private const int FrameRate = 30;
 
     private readonly LevelData _levelData;
+    private readonly bool _generateImages;
 
     private Shader _tileShader;
     private Shader _playerShader;
@@ -69,16 +55,17 @@ public class GameView : GameWindow
 
     private readonly IEnumerator<InputState> _recording;
 
-    public GameView(LevelData levelData) : this(levelData, Array.Empty<InputState>())
+    public GameView(LevelData levelData, bool generateImages) : this(levelData, Array.Empty<InputState>(), generateImages)
     {
     }
 
-    public GameView(LevelData levelData, IEnumerable<InputState> recording)
+    public GameView(LevelData levelData, IEnumerable<InputState> recording, bool generateImages)
         : base(
             new GameWindowSettings { RenderFrequency = FrameRate, UpdateFrequency = FrameRate },
             new NativeWindowSettings { Size = (800, 600), Title = "Jumpman" })
     {
         _levelData = levelData;
+        _generateImages = generateImages;
         _recording = recording.GetEnumerator();
 
         if (!Directory.Exists("outputimg"))
@@ -156,22 +143,20 @@ public class GameView : GameWindow
 
         GL.DrawElements(BeginMode.Triangles, _squareVertexIndexes.Length, DrawElementsType.UnsignedInt, 0);
 
-        //var stride = Size.X * 3;
-        //stride += (4 - stride % 4) % 4;
-        //var pixels = new byte[stride * Size.Y];
-        //GL.ReadPixels(0, 0, Size.X, Size.Y, PixelFormat.Rgb, PixelType.UnsignedByte, pixels);
-        //using var image = Image.LoadPixelData<Rgb24>(Configuration.Default, pixels, Size.X, Size.Y);
-        //image.Mutate(x => x.Flip(FlipMode.Vertical));
-        //var imageFileName = $"{_frameCount++}.png";
-        //image.Save($"outputimg/{imageFileName}");
-        //File.AppendAllText(@"outputimg\input.txt", $"file '{imageFileName}'\nduration {args.Time}\n");
-        
-        //Title = $"{_frameCount}";
+        if (_generateImages)
+        {
+            var stride = Size.X * 3;
+            stride += (4 - stride % 4) % 4;
+            var pixels = new byte[stride * Size.Y];
+            GL.ReadPixels(0, 0, Size.X, Size.Y, PixelFormat.Rgb, PixelType.UnsignedByte, pixels);
+            using var image = Image.LoadPixelData<Rgb24>(Configuration.Default, pixels, Size.X, Size.Y);
+            image.Mutate(x => x.Flip(FlipMode.Vertical));
+            var imageFileName = $"{_frameCount++}.png";
+            image.Save($"outputimg/{imageFileName}");
+            File.AppendAllText(@"outputimg\input.txt", $"file '{imageFileName}'\nduration {args.Time}\n");
+        }
 
         Context.SwapBuffers();
-
-        //if (_frameCount > _recordingFinishedFrame + 90)
-        //    Close();
     }
 
     protected override void OnResize(ResizeEventArgs e)

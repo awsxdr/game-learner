@@ -1,31 +1,23 @@
-using System;
-using System.Diagnostics;
-using System.Linq;
-using OpenTK.Mathematics;
-
 namespace GamePlayer;
 
-using System.Collections;
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 internal static class Program
 {
     /// <summary>
     ///  The main entry point for the application.
     /// </summary>
-    //[STAThread]
+    [STAThread]
     static void Main()
     {
-        const bool replay = true;
+        const bool replay = false;
 
         var levelData = LevelData.Load("level.dat");
-        var level = levelData[1];
+        var level = levelData[0];
         var reducer = new GameStateReducer(level);
-
-        new GameView(level).Run();
-
-        return;
 
         IEnumerable<InputState> bestInputs;
 
@@ -62,7 +54,7 @@ internal static class Program
             File.WriteAllText("bestGeneration.txt", base64Data);
         }
 
-        new GameView(level, bestInputs).Run();
+        new GameView(level, bestInputs, false).Run();
     }
 
     private static void WriteGeneration(InputState[] inputs, int generation)
