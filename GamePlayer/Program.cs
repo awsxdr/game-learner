@@ -54,7 +54,7 @@ internal static class Program
             File.WriteAllText("bestGeneration.txt", base64Data);
         }
 
-        new GameView(level, bestInputs, false).Run();
+        new GameView(level, bestInputs, true).Run();
     }
 
     private static void WriteGeneration(InputState[] inputs, int generation)
